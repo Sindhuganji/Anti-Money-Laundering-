@@ -1,0 +1,11 @@
+{
+    "original_rows": 5078345,
+    "original_features": 47,
+    "target_column": "Is Laundering",
+    "target_distribution": {
+        "0": 5073168,
+        "1": 5177
+    },
+    "missing_values": 0,
+    "duplicate_rows": 152
+}

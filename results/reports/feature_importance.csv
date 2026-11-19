@@ -1,0 +1,27 @@
+Feature,Importance
+Payment Format_Frequency,0.2533608010989537
+Amount Received,0.07909822757295444
+Log_Amount_Received,0.07898012589701654
+Source_Transaction_Frequency,0.075356554324485
+Amount Paid,0.058832895963982064
+Transaction_Day,0.05800648404222878
+Previous_Source_Transactions,0.055678578015003664
+Log_Amount_Paid,0.05334412842274139
+Previous_Source_Amount,0.04295757931141054
+Destination_Transaction_Frequency,0.03797514461553934
+Previous_Destination_Amount,0.03090736008039127
+From Bank,0.02599105140656748
+Previous_Destination_Transactions,0.024586602468296716
+To Bank,0.024053216054022292
+Transaction_Weekday,0.022506600492097614
+Same_Bank,0.01875375718162197
+Transaction_Hour,0.01745915171515664
+Is_Weekend,0.012691579651340153
+Payment Currency_Frequency,0.01161501991439811
+Receiving Currency_Frequency,0.010999888708131933
+Is_Night_Transaction,0.0037166983904140306
+Absolute_Amount_Difference,0.0013241251310878981
+Same_Currency,0.0012328504736036168
+Amount_Difference,0.00043628604020384495
+Amount_Ratio,0.00013529302835111985
+Transaction_Month,0.0

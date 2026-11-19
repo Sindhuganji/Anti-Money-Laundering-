@@ -1,0 +1,17 @@
+{
+    "Model": "Isolation Forest",
+    "Training_Samples": 200000,
+    "Test_Samples": 1015669,
+    "Threshold": 0.45586595614509723,
+    "Accuracy": 0.8172199801313224,
+    "Precision": 0.0015605847062698786,
+    "Recall": 0.2792270531400966,
+    "F1_Score": 0.0031038223195970402,
+    "PR_AUC": 0.0013210680223061646,
+    "ROC_AUC": 0.5987255907675102,
+    "True_Positives": 289,
+    "False_Positives": 184898,
+    "False_Negatives": 746,
+    "True_Negatives": 829736,
+    "Total_Alerts": 185187
+}

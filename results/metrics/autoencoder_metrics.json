@@ -1,0 +1,17 @@
+{
+    "Model": "Autoencoder",
+    "Training_Samples": 200000,
+    "Test_Samples": 1015669,
+    "Threshold": 0.0489324486569925,
+    "Accuracy": 0.9661129757824646,
+    "Precision": 0.0017313949670139407,
+    "Recall": 0.05603864734299517,
+    "F1_Score": 0.0033590085133491632,
+    "PR_AUC": 0.0013354115547746406,
+    "ROC_AUC": 0.5592177894774821,
+    "True_Positives": 58,
+    "False_Positives": 33441,
+    "False_Negatives": 977,
+    "True_Negatives": 981193,
+    "Total_Alerts": 33499
+}

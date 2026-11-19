@@ -1,0 +1,8 @@
+Metric,Default Isolation Forest,Calibrated Isolation Forest
+Accuracy,0.9862,0.9898
+Precision,0.0,0.0
+Recall,0.0,0.0
+F1-Score,0.0,0.0
+Balanced Accuracy,0.4935688904459236,0.49537060207196837
+Average Precision,0.0015560134616926066,0.001689500018657065
+ROC-AUC,0.61326944808094,0.6252887611652123
