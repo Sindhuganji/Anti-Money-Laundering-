@@ -1,46 +1,51 @@
-Dataset Documentation
+# AML Project - Dataset Documentation
 
-This directory contains datasets used in the Intelligent Anti-Money Laundering Detection Using Explainable AI project.
+This project uses two datasets for intelligent anti-money laundering detection.
 
-1. IBM AML Transaction Dataset
+## 1. IBM AML Transaction Dataset
 
-Used for detecting suspicious financial transactions and identifying potential money laundering activities.
+**Source:** IBM Transactions for Anti-Money Laundering
 
-Raw Dataset
+**Kaggle:** https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
 
-* HI-Small_Trans.csv
+**License:** CDLA-Sharing-1.0
 
-Processed Datasets
+### Dataset file
 
-* aml_preprocessed.csv
-* aml_feature_engineered.csv
-* aml_feature_engineered_v2.csv
-* aml_train.csv
-* aml_val.csv
-* aml_test.csv
+- HI-Small_Trans.csv
 
-2. Elliptic Bitcoin Transaction Dataset
+### Download
 
-Used for cryptocurrency transaction classification, graph analysis and illicit transaction detection.
+```bash
+mkdir -p data/raw
 
-Raw Dataset
+kaggle datasets download \
+  -d ealtman2019/ibm-transactions-for-anti-money-laundering-aml \
+  -f HI-Small_Trans.csv \
+  -p data/raw \
+  --unzip
+## 2. Elliptic Bitcoin Transaction Dataset
 
-* elliptic_txs_classes.csv
-* elliptic_txs_edgelist.csv
-* elliptic_txs_features.csv
+Used for cryptocurrency transaction analysis, graph-based learning and illicit transaction detection.
 
-Processed Dataset
+### Raw files
 
-* elliptic_labelled.csv
-* elliptic_unknown.csv
-* elliptic_features_engineered.csv
+- elliptic_txs_classes.csv
+- elliptic_txs_edgelist.csv
+- elliptic_txs_features.csv
 
-Dataset Storage
+### Processed files
 
-The datasets are stored separately from this GitHub repository because of their large file sizes.
+- elliptic_labelled.csv
+- elliptic_unknown.csv
+- elliptic_features_engineered.csv
 
-Dataset download links will be provided here.
+## Dataset Storage
 
-Note
+Large datasets are not stored directly in this GitHub repository because of file-size restrictions.
 
-The datasets are used exclusively for academic research and machine learning experimentation. Refer to the original dataset sources for licensing and usage conditions.
+Refer to the original dataset sources for licensing and usage conditions.
+
+## Purpose
+
+Both datasets are used for academic research and experimentation in machine learning, anomaly detection, graph analytics and explainable AI.
