@@ -17,7 +17,13 @@ __pycache__/
 .ipynb_checkpoints/
 
 # Large datasets
-data/*
+data/**/*.csv
+data/**/*.db
+
+# Allow dataset documentation and metadata
+!data/**/
+!data/**/*.json
+!data/**/*.md
 
 # Model files
 *.pkl
