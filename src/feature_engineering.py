@@ -1,267 +1,177 @@
-"""
-Feature engineering module for Anti-Money Laundering (AML) detection.
-Builds domain-specific features without data leakage:
-- Financial transaction metrics (difference, ratio, log amounts)
-- Temporal features (hour, day, weekday, is_weekend, is_night)
-- Relational features (same_currency, same_bank)
-- Account activity and frequency features (fitted on train or pre-split mapping)
-- Historical cumulative activity features (time-ordered)
-"""
+"""Leakage-aware feature engineering for IBM HI-Small AML transactions.
 
-import os
+Historical account features are calculated strictly from earlier transactions.
+For inference, pass history_df containing transactions strictly earlier than the
+transactions being scored. Without history, historical values start at zero.
+"""
+from __future__ import annotations
 import logging
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(message)s")
 logger = logging.getLogger(__name__)
-
+TARGET = "Is Laundering"
 ENGINEERED_FEATURE_NAMES = [
-    'Amount Received',
-    'Amount Paid',
-    'Amount_Difference',
-    'Absolute_Amount_Difference',
-    'Amount_Ratio',
-    'Log_Amount_Received',
-    'Log_Amount_Paid',
-    'Transaction_Hour',
-    'Transaction_Day',
-    'Transaction_Month',
-    'Transaction_Weekday',
-    'Is_Weekend',
-    'Is_Night_Transaction',
-    'Same_Currency',
-    'Same_Bank',
-    'Source_Transaction_Frequency',
-    'Destination_Transaction_Frequency',
-    'Previous_Source_Transactions',
-    'Previous_Source_Amount',
-    'Previous_Destination_Transactions',
-    'Previous_Destination_Amount',
-    'Receiving Currency_Frequency',
-    'Payment Currency_Frequency',
-    'Payment Format_Frequency'
+    "Amount Received", "Amount Paid", "Amount_Difference",
+    "Absolute_Amount_Difference", "Amount_Ratio", "Log_Amount_Received",
+    "Log_Amount_Paid", "Transaction_Hour", "Transaction_Day",
+    "Transaction_Month", "Transaction_Weekday", "Is_Weekend",
+    "Is_Night_Transaction", "Same_Currency", "Same_Bank",
+    "Source_Transaction_Frequency", "Destination_Transaction_Frequency",
+    "Previous_Source_Transactions", "Previous_Source_Amount",
+    "Previous_Destination_Transactions", "Previous_Destination_Amount",
+    "Receiving Currency_Frequency", "Payment Currency_Frequency",
+    "Payment Format_Frequency",
 ]
+CAT_COLS = ["Receiving Currency", "Payment Currency", "Payment Format"]
+
+
+def _numeric_amounts(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    for col in ("Amount Paid", "Amount Received"):
+        if col not in out:
+            out[col] = 0.0
+        out[col] = pd.to_numeric(out[col], errors="coerce").fillna(0.0).astype("float64")
+    return out
 
 
 def extract_temporal_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Extract date and time features from Timestamp column.
-    """
-    df = df.copy()
-    if 'Timestamp' in df.columns:
-        dt = pd.to_datetime(df['Timestamp'], errors='coerce')
-        df['Transaction_Hour'] = dt.dt.hour.fillna(0).astype('int8')
-        df['Transaction_Day'] = dt.dt.day.fillna(1).astype('int8')
-        df['Transaction_Month'] = dt.dt.month.fillna(9).astype('int8')
-        df['Transaction_Weekday'] = dt.dt.dayofweek.fillna(0).astype('int8')
-        df['Is_Weekend'] = (df['Transaction_Weekday'] >= 5).astype('int8')
-        df['Is_Night_Transaction'] = (
-            (df['Transaction_Hour'] >= 22) | (df['Transaction_Hour'] < 6)
-        ).astype('int8')
-    return df
+    out = df.copy()
+    if "Timestamp" not in out:
+        raise ValueError("Raw IBM transactions must contain 'Timestamp'.")
+    dt = pd.to_datetime(out["Timestamp"], errors="coerce")
+    if dt.isna().any():
+        raise ValueError(f"Timestamp contains {int(dt.isna().sum())} invalid values.")
+    out["Transaction_Hour"] = dt.dt.hour.astype("int8")
+    out["Transaction_Day"] = dt.dt.day.astype("int8")
+    out["Transaction_Month"] = dt.dt.month.astype("int8")
+    out["Transaction_Weekday"] = dt.dt.dayofweek.astype("int8")
+    out["Is_Weekend"] = (dt.dt.dayofweek >= 5).astype("int8")
+    out["Is_Night_Transaction"] = ((dt.dt.hour >= 22) | (dt.dt.hour < 6)).astype("int8")
+    return out
 
 
 def extract_amount_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Calculate financial transaction amount relationship features.
-    """
-    df = df.copy()
-    paid = pd.to_numeric(df['Amount Paid'], errors='coerce').fillna(0.0)
-    received = pd.to_numeric(df['Amount Received'], errors='coerce').fillna(0.0)
-
-    df['Amount Paid'] = paid
-    df['Amount Received'] = received
-    df['Amount_Difference'] = paid - received
-    df['Absolute_Amount_Difference'] = df['Amount_Difference'].abs()
-    df['Amount_Ratio'] = paid / (received + 1e-8)
-    df['Log_Amount_Received'] = np.log1p(np.maximum(0.0, received))
-    df['Log_Amount_Paid'] = np.log1p(np.maximum(0.0, paid))
-    return df
+    out = _numeric_amounts(df)
+    paid, received = out["Amount Paid"], out["Amount Received"]
+    out["Amount_Difference"] = paid - received
+    out["Absolute_Amount_Difference"] = (paid - received).abs()
+    out["Amount_Ratio"] = paid / received.replace(0, np.nan)
+    out["Amount_Ratio"] = out["Amount_Ratio"].replace([np.inf, -np.inf], np.nan).fillna(0.0)
+    out["Log_Amount_Received"] = np.log1p(received.clip(lower=0))
+    out["Log_Amount_Paid"] = np.log1p(paid.clip(lower=0))
+    return out
 
 
 def extract_relational_features(df: pd.DataFrame) -> pd.DataFrame:
+    out = df.copy()
+    out["Same_Currency"] = (
+        out["Receiving Currency"].astype(str).eq(out["Payment Currency"].astype(str)).astype("int8")
+        if {"Receiving Currency", "Payment Currency"}.issubset(out.columns) else 0
+    )
+    out["Same_Bank"] = (
+        out["From Bank"].astype(str).eq(out["To Bank"].astype(str)).astype("int8")
+        if {"From Bank", "To Bank"}.issubset(out.columns) else 0
+    )
+    return out
+
+
+def extract_historical_features(df: pd.DataFrame, history_df: Optional[pd.DataFrame] = None) -> pd.DataFrame:
+    """For each row, calculate account counts/amounts before that row only.
+
+    history_df is optional prior context and must contain no transaction at or
+    after the earliest transaction in df. Ties are ordered by input row order.
     """
-    Calculate relational features: same currency, same bank.
-    """
-    df = df.copy()
-    if 'Receiving Currency' in df.columns and 'Payment Currency' in df.columns:
-        df['Same_Currency'] = (
-            df['Receiving Currency'] == df['Payment Currency']
-        ).astype('int8')
+    current = _numeric_amounts(df)
+    current = current.copy()
+    current["__is_current"] = True
+    current["__row_order"] = np.arange(len(current))
+    if history_df is not None and len(history_df):
+        hist = _numeric_amounts(history_df.copy())
+        if "Timestamp" not in hist:
+            raise ValueError("history_df must contain Timestamp.")
+        hist_times = pd.to_datetime(hist["Timestamp"], errors="coerce")
+        current_times = pd.to_datetime(current["Timestamp"], errors="coerce")
+        if hist_times.isna().any() or current_times.isna().any():
+            raise ValueError("history_df/current transactions contain invalid timestamps.")
+        if hist_times.max() >= current_times.min():
+            raise ValueError("history_df must contain only transactions strictly earlier than the scored batch.")
+        hist["__is_current"] = False
+        hist["__row_order"] = -1 - np.arange(len(hist))
+        combined = pd.concat([hist, current], ignore_index=True, sort=False)
     else:
-        df['Same_Currency'] = 0
+        combined = current
 
-    if 'From Bank' in df.columns and 'To Bank' in df.columns:
-        df['Same_Bank'] = (
-            df['From Bank'] == df['To Bank']
-        ).astype('int8')
-    else:
-        df['Same_Bank'] = 0
+    if "Timestamp" not in combined:
+        raise ValueError("Historical feature calculation requires Timestamp.")
+    combined["__time"] = pd.to_datetime(combined["Timestamp"], errors="coerce")
+    if combined["__time"].isna().any():
+        raise ValueError("Invalid Timestamp encountered while building historical features.")
+    combined = combined.sort_values(["__time", "__is_current", "__row_order"], kind="mergesort").reset_index(drop=True)
 
-    return df
+    for account_col, amount_col, count_name, sum_name in [
+        ("Account", "Amount Paid", "Previous_Source_Transactions", "Previous_Source_Amount"),
+        ("Account.1", "Amount Received", "Previous_Destination_Transactions", "Previous_Destination_Amount"),
+    ]:
+        if account_col in combined:
+            grp = combined.groupby(account_col, sort=False, dropna=False)
+            combined[count_name] = grp.cumcount().astype("float32")
+            combined[sum_name] = (grp[amount_col].cumsum() - combined[amount_col]).astype("float32")
+        else:
+            combined[count_name] = np.float32(0)
+            combined[sum_name] = np.float32(0)
 
-
-def extract_historical_features(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    Extract time-ordered historical activity per account:
-    - Previous_Source_Transactions
-    - Previous_Source_Amount
-    - Previous_Destination_Transactions
-    - Previous_Destination_Amount
-    
-    Operates strictly chronologically to avoid future look-ahead.
-    """
-    df = df.copy()
-    df['_orig_order'] = np.arange(len(df))
-
-    if 'Timestamp' in df.columns:
-        df['Timestamp_dt'] = pd.to_datetime(df['Timestamp'], errors='coerce')
-        df = df.sort_values(['Timestamp_dt', '_orig_order']).reset_index(drop=True)
-
-    # Source account historical activity
-    if 'Account' in df.columns:
-        source_group = df.groupby('Account', sort=False)
-        df['Previous_Source_Transactions'] = source_group.cumcount().astype('float32')
-        df['Previous_Source_Amount'] = (
-            source_group['Amount Paid'].cumsum() - df['Amount Paid']
-        ).astype('float32')
-    else:
-        df['Previous_Source_Transactions'] = 0.0
-        df['Previous_Source_Amount'] = 0.0
-
-    # Destination account historical activity
-    if 'Account.1' in df.columns:
-        dest_group = df.groupby('Account.1', sort=False)
-        df['Previous_Destination_Transactions'] = dest_group.cumcount().astype('float32')
-        df['Previous_Destination_Amount'] = (
-            dest_group['Amount Received'].cumsum() - df['Amount Received']
-        ).astype('float32')
-    else:
-        df['Previous_Destination_Transactions'] = 0.0
-        df['Previous_Destination_Amount'] = 0.0
-
-    # Restore original ordering
-    df = df.sort_values('_orig_order').reset_index(drop=True)
-    df.drop(columns=['_orig_order'], inplace=True, errors='ignore')
-    if 'Timestamp_dt' in df.columns:
-        df.drop(columns=['Timestamp_dt'], inplace=True, errors='ignore')
-
-    return df
+    # Past-only account activity replaces full-period account frequency counts.
+    combined["Source_Transaction_Frequency"] = np.log1p(combined["Previous_Source_Transactions"].clip(lower=0)).astype("float32")
+    combined["Destination_Transaction_Frequency"] = np.log1p(combined["Previous_Destination_Transactions"].clip(lower=0)).astype("float32")
+    result = combined.loc[combined["__is_current"]].sort_values("__row_order")
+    result = result.drop(columns=["__is_current", "__row_order", "__time"], errors="ignore")
+    return result.reset_index(drop=True)
 
 
-def fit_frequency_encoders(
-    train_df: pd.DataFrame,
-    categorical_cols: Optional[List[str]] = None,
-    identifier_cols: Optional[List[str]] = None
-) -> Dict[str, Dict[str, float]]:
-    """
-    Fit frequency encodings exclusively on training data to prevent data leakage.
-    
-    Parameters
-    ----------
-    train_df : pd.DataFrame
-        Training data.
-    categorical_cols : Optional[List[str]]
-        Categorical columns to compute normalized frequencies for.
-    identifier_cols : Optional[List[str]]
-        Account ID columns to compute raw counts for.
-        
-    Returns
-    -------
-    Dict[str, Dict[str, float]]
-        Dictionary of mappings {col_name: {category: frequency/count}}.
-    """
-    cat_cols = categorical_cols or [
-        'Receiving Currency',
-        'Payment Currency',
-        'Payment Format'
-    ]
-    id_cols = identifier_cols or [
-        'Account',
-        'Account.1'
-    ]
-
+def fit_frequency_encoders(train_df: pd.DataFrame, categorical_cols: Optional[List[str]] = None) -> Dict[str, Dict[str, float]]:
+    """Fit normalized category frequencies on training data only."""
     encoders: Dict[str, Dict[str, float]] = {}
-
-    for col in cat_cols:
-        if col in train_df.columns:
-            freq = train_df[col].value_counts(normalize=True).to_dict()
-            encoders[col] = freq
-
-    for col in id_cols:
-        if col in train_df.columns:
-            counts = train_df[col].value_counts().to_dict()
-            encoders[col] = counts
-
+    for col in (categorical_cols or CAT_COLS):
+        if col in train_df:
+            vals = train_df[col].fillna("__MISSING__").astype(str)
+            encoders[col] = vals.value_counts(normalize=True).to_dict()
     return encoders
 
 
-def apply_frequency_encoders(
-    df: pd.DataFrame,
-    encoders: Dict[str, Dict[str, float]],
-    default_cat_val: float = 0.0,
-    default_id_val: float = 1.0
-) -> pd.DataFrame:
-    """
-    Apply pre-computed training frequency mappings to any dataframe (train/val/test/inference).
-    Unseen categories/accounts safely default to 0.0 or 1.0 without leakage.
-    """
-    df = df.copy()
-
-    # Categorical normalized frequencies
-    cat_cols = ['Receiving Currency', 'Payment Currency', 'Payment Format']
-    for col in cat_cols:
-        if col in encoders:
-            mapping = encoders[col]
-            df[col + '_Frequency'] = df[col].map(mapping).fillna(default_cat_val).astype('float32')
-
-    # Account frequencies
-    if 'Account' in encoders:
-        df['Source_Transaction_Frequency'] = (
-            df['Account'].map(encoders['Account']).fillna(default_id_val).astype('float32')
-        )
-    if 'Account.1' in encoders:
-        df['Destination_Transaction_Frequency'] = (
-            df['Account.1'].map(encoders['Account.1']).fillna(default_id_val).astype('float32')
-        )
-
-    return df
+def apply_frequency_encoders(df: pd.DataFrame, encoders: Dict[str, Dict[str, float]], default: float = 0.0) -> pd.DataFrame:
+    out = df.copy()
+    for col in CAT_COLS:
+        if col in out:
+            mapping = encoders.get(col, {})
+            out[f"{col}_Frequency"] = out[col].fillna("__MISSING__").astype(str).map(mapping).fillna(default).astype("float32")
+        else:
+            out[f"{col}_Frequency"] = np.float32(default)
+    # These are past-only counts generated by extract_historical_features.
+    for col in ("Source_Transaction_Frequency", "Destination_Transaction_Frequency"):
+        if col not in out:
+            out[col] = np.float32(0)
+    return out
 
 
 def build_features(
     df: pd.DataFrame,
-    encoders: Optional[Dict[str, Dict[str, float]]] = None
+    encoders: Optional[Dict[str, Dict[str, float]]] = None,
+    history_df: Optional[pd.DataFrame] = None,
 ) -> Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]:
-    """
-    End-to-end feature engineering pipeline for a single DataFrame.
-    If encoders are None, they are fitted on this DataFrame (for training).
-    If encoders are provided, they are applied (for val/test/inference).
-    
-    Returns
-    -------
-    Tuple[pd.DataFrame, Dict[str, Dict[str, float]]]
-        Transformed DataFrame with engineered features, and fitted encoders.
-    """
-    logger.info("Executing feature engineering pipeline...")
-    df_feat = extract_temporal_features(df)
-    df_feat = extract_amount_features(df_feat)
-    df_feat = extract_relational_features(df_feat)
-    df_feat = extract_historical_features(df_feat)
-
+    """Build model features. `history_df` supplies transactions before this batch."""
+    if df.empty:
+        raise ValueError("Cannot build features for an empty transaction DataFrame.")
+    raw = df.copy().reset_index(drop=True)
+    feat = extract_temporal_features(raw)
+    feat = extract_amount_features(feat)
+    feat = extract_relational_features(feat)
+    feat = extract_historical_features(feat, history_df=history_df)
     if encoders is None:
-        logger.info("Fitting frequency encoders on provided DataFrame...")
-        encoders = fit_frequency_encoders(df_feat)
-
-    df_feat = apply_frequency_encoders(df_feat, encoders)
-
-    # Retain final engineered feature columns + Target if present
-    target_col = 'Is Laundering'
-    keep_cols = [c for c in ENGINEERED_FEATURE_NAMES if c in df_feat.columns]
-    if target_col in df_feat.columns:
-        keep_cols.append(target_col)
-
-    output_df = df_feat[keep_cols].copy()
-    logger.info(f"Feature engineering completed. Output shape: {output_df.shape}")
-    return output_df, encoders
+        encoders = fit_frequency_encoders(raw)
+    feat = apply_frequency_encoders(feat, encoders)
+    missing = [c for c in ENGINEERED_FEATURE_NAMES if c not in feat]
+    if missing:
+        raise ValueError(f"Feature engineering failed to create: {missing}")
+    return feat[ENGINEERED_FEATURE_NAMES + ([TARGET] if TARGET in feat else [])].copy(), encoders

@@ -90,19 +90,78 @@ def load_elliptic_predictor() -> EllipticPredictor:
 
 @st.cache_data
 def load_ibm_demo_data(nrows: int = 1000) -> pd.DataFrame:
-    """Load slice of IBM test dataset."""
-    test_path = os.path.join("data", "processed", "aml_test.csv")
-    if os.path.exists(test_path):
-        return pd.read_csv(test_path, nrows=nrows)
-    return pd.DataFrame()
+    """Load raw IBM transactions with the Timestamp and raw schema preserved.
+
+    The current IBM feature-engineering pipeline requires the original
+    transaction columns, including Timestamp. A preprocessed CSV that has
+    dropped Timestamp cannot be passed to AMLPredictor.predict_batch().
+    """
+    raw_path = os.path.join("data", "raw", "HI-Small_Trans.csv")
+    if not os.path.exists(raw_path):
+        raise FileNotFoundError(
+            f"Original IBM dataset not found: {raw_path}. "
+            "Place HI-Small_Trans.csv inside data/raw/."
+        )
+
+    df = pd.read_csv(raw_path, nrows=nrows)
+
+    required_columns = [
+        "Timestamp",
+        "From Bank",
+        "Account",
+        "To Bank",
+        "Account.1",
+        "Amount Received",
+        "Receiving Currency",
+        "Amount Paid",
+        "Payment Currency",
+        "Payment Format",
+    ]
+    missing = [column for column in required_columns if column not in df.columns]
+    if missing:
+        raise ValueError(
+            "Raw IBM dataset is missing required columns: " + ", ".join(missing)
+        )
+
+    df["Timestamp"] = pd.to_datetime(df["Timestamp"], errors="coerce")
+    invalid_timestamps = int(df["Timestamp"].isna().sum())
+    if invalid_timestamps:
+        logging.warning(
+            "Dropping %d IBM demo rows with invalid Timestamp values.",
+            invalid_timestamps,
+        )
+        df = df.dropna(subset=["Timestamp"])
+
+    # Keep the raw transaction schema and chronological order for temporal
+    # feature generation. Do not drop or rename the source columns here.
+    return df.sort_values("Timestamp").reset_index(drop=True)
 
 @st.cache_data
-def load_elliptic_demo_data(nrows: int = 1000) -> pd.DataFrame:
-    """Load slice of Elliptic processed dataset."""
+def load_elliptic_demo_data() -> pd.DataFrame:
+    """Load labelled Elliptic data; retain all labels for reliable transaction filtering."""
     path = os.path.join("data", "elliptic", "processed", "elliptic_labelled.csv")
     if os.path.exists(path):
-        return pd.read_csv(path, nrows=nrows)
+        return pd.read_csv(path)
     return pd.DataFrame()
+
+
+# Elliptic label helpers: preserve ground truth separately from model predictions.
+def normalize_elliptic_label(value):
+    if pd.isna(value):
+        return "Unknown"
+    value = str(value).strip().lower()
+    if value in {"1", "1.0", "illicit"}:
+        return "Illicit"
+    if value in {"2", "2.0", "licit"}:
+        return "Licit"
+    return "Unknown"
+
+
+def get_ground_truth_column(df):
+    for candidate in ("Actual_Class", "class", "Class", "label", "Label"):
+        if candidate in df.columns:
+            return candidate
+    return None
 
 
 # ==============================================================================
@@ -144,10 +203,24 @@ else:
         help="Select which model drives crypto transaction classification."
     )
     crypto_predictor = load_elliptic_predictor()
-    crypto_predictor.set_active_model(selected_model)
-    operating_threshold = crypto_predictor.thresholds[selected_model]
-    st.sidebar.markdown(f"**Operating Threshold:** `{operating_threshold:.4f}`")
-    demo_data = load_elliptic_demo_data(nrows=1000)
+    try:
+        crypto_predictor.set_active_model(selected_model)
+        operating_threshold = float(crypto_predictor.thresholds.get(selected_model, 0.5))
+        if selected_model not in crypto_predictor.thresholds:
+            st.sidebar.warning("No saved threshold found; displaying the default 0.50 threshold.")
+        st.sidebar.markdown(f"**Operating Threshold:** `{operating_threshold:.4f}`")
+    except Exception as exc:
+        st.sidebar.error(f"Unable to load {selected_model}: {exc}")
+        st.stop()
+    demo_data = load_elliptic_demo_data()
+    if demo_data.empty:
+        st.error("Elliptic processed dataset was not found or is empty.")
+        st.stop()
+    gt_col = get_ground_truth_column(demo_data)
+    if gt_col:
+        demo_data["Ground_Truth"] = demo_data[gt_col].map(normalize_elliptic_label)
+    else:
+        demo_data["Ground_Truth"] = "Unknown"
 
 st.sidebar.markdown("---")
 
@@ -293,13 +366,18 @@ elif page == "🔍 Transaction Analysis":
             st.info("Demonstrating on slice of 100 held-out test transactions. Upload a CSV to evaluate custom data.")
             input_df = demo_data.head(100).copy()
 
+        if is_crypto and not input_df.empty:
+            batch_gt_col = get_ground_truth_column(input_df)
+            if batch_gt_col:
+                input_df["Ground_Truth"] = input_df[batch_gt_col].map(normalize_elliptic_label)
+
         with st.spinner(f"Evaluating with {selected_model}..."):
             if not is_crypto:
                 analyzed_df = ibm_predictor.predict_batch(input_df, include_anomaly_scores=True)
                 disp_cols = ["Amount Received", "Amount Paid", "Laundering_Probability", "Risk_Score", "Risk_Category", "Predicted_Class"]
             else:
                 analyzed_df = crypto_predictor.predict_batch(input_df)
-                disp_cols = ["txId", "Probability", "Threshold", "Prediction", "Risk_Score", "Risk_Tier", "Actual_Class"]
+                disp_cols = ["txId", "Probability", "Threshold", "Prediction", "Risk_Score", "Risk_Tier", "Actual_Class", "Ground_Truth"]
 
         st.subheader("Transaction Evaluation Results")
         available_disp = [c for c in disp_cols if c in analyzed_df.columns]
@@ -353,24 +431,55 @@ elif page == "🔍 Transaction Analysis":
                     st.write(bullet)
         else:
             st.subheader("Single Cryptocurrency Transaction Evaluator")
-            st.write("Inspect a sample transaction from the held-out Bitcoin dataset:")
-            tx_idx = st.slider("Select Transaction Row Index", 0, len(demo_data)-1, 0)
-            sample_row = demo_data.iloc[tx_idx].to_dict()
-            
-            c1, c2, c3 = st.columns(3)
-            c1.write(f"**txId:** `{sample_row.get('txId', 'N/A')}`")
-            c2.write(f"**In-Degree:** `{sample_row.get('in_degree', 0)}`")
-            c3.write(f"**Out-Degree:** `{sample_row.get('out_degree', 0)}`")
-            
-            if st.button("Evaluate Cryptocurrency Risk", type="primary"):
-                res = crypto_predictor.predict_single(sample_row)
-                st.markdown("---")
-                k1, k2, k3, k4 = st.columns(4)
-                k1.metric("Predicted Status", res["Prediction"])
-                k2.metric("Risk Score", f"{res['Risk_Score']}/100")
-                k3.metric("Illicit Probability", f"{res['Probability']:.4f}")
-                k4.metric("Risk Tier", res["Risk_Tier"])
-                st.write(f"**Ground Truth Label:** `{res.get('Actual_Class', 'unknown')}`")
+            st.write("Filter the labelled Elliptic dataset and inspect a transaction.")
+
+            label_filter = st.selectbox(
+                "Ground-truth transaction group",
+                ["All Transactions", "Confirmed Illicit", "Confirmed Licit", "Unknown"],
+                key="crypto_ground_truth_filter"
+            )
+            if label_filter == "Confirmed Illicit":
+                candidates = demo_data[demo_data["Ground_Truth"] == "Illicit"]
+            elif label_filter == "Confirmed Licit":
+                candidates = demo_data[demo_data["Ground_Truth"] == "Licit"]
+            elif label_filter == "Unknown":
+                candidates = demo_data[demo_data["Ground_Truth"] == "Unknown"]
+            else:
+                candidates = demo_data
+
+            if candidates.empty:
+                st.warning(f"No rows found for: {label_filter}. Check that elliptic_labelled.csv contains ground-truth labels.")
+            else:
+                candidates = candidates.reset_index(drop=False).rename(columns={"index": "Source_Row_Index"})
+                display_ids = candidates["txId"].astype(str) if "txId" in candidates.columns else candidates["Source_Row_Index"].astype(str)
+                selected_id = st.selectbox(
+                    "Select transaction (TxID)",
+                    options=display_ids.tolist(),
+                    key="crypto_tx_selector"
+                )
+                selected_pos = display_ids[display_ids == selected_id].index[0]
+                selected_record = candidates.iloc[selected_pos]
+                sample_row = selected_record.drop(labels=["Ground_Truth"], errors="ignore").to_dict()
+
+                c1, c2, c3, c4 = st.columns(4)
+                c1.write(f"**TxID:** `{sample_row.get('txId', 'N/A')}`")
+                c2.write(f"**Ground Truth:** `{selected_record['Ground_Truth']}`")
+                c3.write(f"**In-Degree:** `{sample_row.get('in_degree', 0)}`")
+                c4.write(f"**Out-Degree:** `{sample_row.get('out_degree', 0)}`")
+
+                if st.button("Evaluate Cryptocurrency Risk", type="primary"):
+                    try:
+                        res = crypto_predictor.predict_single(sample_row)
+                        st.markdown("---")
+                        k1, k2, k3, k4 = st.columns(4)
+                        k1.metric("Predicted Status", res.get("Prediction", "Unavailable"))
+                        k2.metric("Risk Score", f"{res.get('Risk_Score', 0)}/100")
+                        k3.metric("Illicit Probability", f"{res.get('Probability', 0):.4f}")
+                        k4.metric("Risk Tier", res.get("Risk_Tier", "Unknown"))
+                        st.write(f"**Ground Truth Label:** `{selected_record['Ground_Truth']}`")
+                        st.caption("Ground truth is the dataset label; prediction is the model output. They are not interchangeable.")
+                    except Exception as exc:
+                        st.error(f"Transaction evaluation failed: {exc}")
 
 
 # ==============================================================================

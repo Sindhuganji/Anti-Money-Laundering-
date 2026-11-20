@@ -1,4 +1,6 @@
 {
-    "optimal_threshold": 0.8988756537437439,
-    "optimization_metric": "f2"
+  "optimal_threshold": 0.9753457307815552,
+  "optimization_metric": "f2",
+  "validation_f2": 0.2576538344953016,
+  "threshold_selected_on": "validation"
 }

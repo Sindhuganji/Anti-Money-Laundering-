@@ -11,3 +11,4 @@ matplotlib==3.10.3
 seaborn==0.13.2
 tensorflow==2.21.0
 networkx>=3.0.0
+plotly
