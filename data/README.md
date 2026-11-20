@@ -1,6 +1,6 @@
 AML Project – Dataset Documentation
 
-This project uses two datasets for Intelligent Anti-Money Laundering Detection Using Explainable AI.
+This project uses two datasets for Intelligent Anti-Money Laundering Detection Using Explainable AI:
 
 1. IBM Transactions for Anti-Money Laundering Dataset
 2. Elliptic Bitcoin Transaction Dataset
@@ -14,26 +14,27 @@ These datasets support the development and evaluation of machine learning models
 Dataset Information
 
 * Dataset Name: IBM Transactions for Anti-Money Laundering (AML)
-* Original Source: Kaggle
-* Dataset Link: https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
+* Original Source: IBM
+* Dataset Platform: Kaggle
+* Kaggle Dataset: https://www.kaggle.com/datasets/ealtman2019/ibm-transactions-for-anti-money-laundering-aml
 * License: CDLA-Sharing-1.0 (refer to the original dataset terms)
 
-Dataset File
+Dataset Files
 
 File Name	Description
 HI-Small_Trans.csv	Transaction-level financial data used for AML detection.
 
 Download Instructions
 
-Install and configure the Kaggle CLI:
+Step 1: Install Kaggle CLI
 
 pip install kaggle
 
-Authenticate using:
+Step 2: Authenticate with Kaggle
 
 kaggle auth login
 
-Download the dataset:
+Step 3: Download the Dataset
 
 mkdir -p data/raw
 kaggle datasets download \
@@ -41,7 +42,7 @@ kaggle datasets download \
   -p data/raw \
   --unzip
 
-Refer to the original Kaggle dataset page for the available files and download details.
+Refer to the original Kaggle dataset page for available files and download details.
 
 Project Usage
 
@@ -62,25 +63,80 @@ The IBM AML dataset is used for:
 Dataset Information
 
 * Dataset Name: Elliptic Bitcoin Transaction Dataset
+* Original Publisher: Elliptic
+* Dataset Platform: Kaggle
 * Domain: Cryptocurrency Transaction Analysis
 * Purpose: Identification of licit and illicit Bitcoin transactions.
 
+Original Dataset Sources
+
+* Elliptic Official Website: https://www.elliptic.co/insights/elliptic-dataset-cryptocurrency-financial-crime/
+* Kaggle Dataset: https://www.kaggle.com/datasets/ellipticco/elliptic-data-set
+* Dataset License: CC BY-NC-ND 4.0 (verify the current license and terms on the original Kaggle page).
+
 Raw Dataset Files
 
-The original dataset consists of the following files:
+The original dataset consists of three main files:
 
 File Name	Description
 elliptic_txs_classes.csv	Contains transaction IDs and their corresponding class labels.
-elliptic_txs_edgelist.csv	Represents relationships between transactions.
+elliptic_txs_edgelist.csv	Represents relationships and connections between Bitcoin transactions.
 elliptic_txs_features.csv	Contains transaction features used for machine learning.
 
+Dataset Components
+
+1. Transaction Classes
+
+Contains labels associated with Bitcoin transactions:
+
+* 1 – Illicit transactions.
+* 2 – Licit transactions.
+* unknown – Transactions without an available class label.
+
+2. Transaction Edgelist
+
+Represents relationships between transactions.
+
+Each edge indicates a relationship representing the flow of Bitcoin between transactions.
+
+3. Transaction Features
+
+Contains transaction-level and aggregated features used for classification and analysis.
+
+Download Instructions
+
+Step 1: Create the Dataset Directory
+
+mkdir -p data/elliptic/raw
+
+Step 2: Download the Dataset Using Kaggle CLI
+
+kaggle datasets download \
+  -d ellipticco/elliptic-data-set \
+  -p data/elliptic/raw \
+  --unzip
+
+Step 3: Verify Downloaded Files
+
+ls -lh data/elliptic/raw/
+
+The directory should contain:
+
+elliptic_txs_classes.csv
+elliptic_txs_edgelist.csv
+elliptic_txs_features.csv
+
 Processed Dataset Files
+
+The following files are generated during the project’s preprocessing and feature engineering stages.
 
 File Name	Description
 elliptic_labelled.csv	Processed transactions with available labels.
 elliptic_unknown.csv	Transactions with unknown or unavailable labels.
 elliptic_features_engineered.csv	Processed dataset containing engineered features.
 elliptic_metadata.json	Metadata associated with the processed dataset.
+
+These are project-generated files and are not original files from the Kaggle dataset.
 
 Project Usage
 
@@ -89,9 +145,10 @@ The Elliptic dataset is used for:
 * Cryptocurrency transaction analysis.
 * Transaction graph construction.
 * Graph-based feature analysis.
-* Illicit transaction detection.
+* Licit and illicit transaction detection.
 * Machine learning experimentation.
 * Analysis of relationships between transactions.
+* Identification of suspicious Bitcoin transaction patterns.
 
 ⸻
 
@@ -116,6 +173,7 @@ data/
 │   └── duplicate_check.db
 │
 └── elliptic/
+    │
     ├── raw/
     │   ├── elliptic_txs_classes.csv
     │   ├── elliptic_txs_edgelist.csv
@@ -127,7 +185,7 @@ data/
         ├── elliptic_features_engineered.csv
         └── elliptic_metadata.json
 
-Note: The directory structure represents the dataset organization used in the project. Individual generated files may vary depending on the preprocessing and experimentation stages.
+Note: The directory structure represents the dataset organization used in this project. Intermediate files may vary depending on preprocessing and experimentation.
 
 ⸻
 
@@ -135,14 +193,16 @@ Note: The directory structure represents the dataset organization used in the pr
 
 The datasets and intermediate files are relatively large. Therefore, raw and processed dataset files are excluded from the GitHub repository.
 
-The repository contains documentation and source code required to understand and reproduce the project workflow.
+The repository contains source code, documentation, model configurations, and other project files required to understand and reproduce the project workflow.
 
-Important:
+Storage Guidelines
 
 * Large CSV files and database files are not committed to GitHub.
-* Dataset downloads should be performed from their original sources.
-* Processed datasets can be generated by executing the project preprocessing scripts.
+* Original datasets should be downloaded from their respective sources.
+* Processed datasets can be generated by executing the project’s preprocessing scripts.
+* Dataset metadata and documentation can be maintained separately.
 * Users must follow the original dataset licenses and usage conditions.
+* The Elliptic dataset and its derivatives should not be redistributed without checking the applicable license permissions.
 
 ⸻
 
@@ -158,6 +218,7 @@ Both datasets are used in the project to explore:
 * Transaction Behaviour Analysis
 * Graph Analytics
 * Cryptocurrency Transaction Analysis
+* Financial Fraud Detection
 * Explainable Artificial Intelligence (XAI)
 
 ⸻
@@ -167,24 +228,55 @@ Both datasets are used in the project to explore:
 To reproduce the project:
 
 1. Clone the GitHub repository.
-2. Install the required Python dependencies.
-3. Download the original datasets from their respective sources.
-4. Place the raw datasets in the appropriate directories.
-5. Execute the preprocessing and feature engineering scripts.
-6. Train and evaluate the machine learning models.
-7. Run the application to explore the AML detection results.
+2. Create and activate a Python virtual environment.
+3. Install the required dependencies.
+4. Configure Kaggle authentication.
+5. Download the original datasets from their respective sources.
+6. Place the raw datasets in the appropriate directories.
+7. Execute the preprocessing and feature engineering scripts.
+8. Train and evaluate the machine learning models.
+9. Run the application to explore AML detection results.
 
-Install project dependencies using:
+Install Dependencies
 
 pip install -r requirements.txt
 
+Create Virtual Environment
+
+python3 -m venv .venv
+
+Activate Virtual Environment
+
+source .venv/bin/activate
+
 ⸻
 
-7. Project Repository
+7. Research Reference
+
+The Elliptic dataset was introduced in the following research paper:
+
+Weber et al. (2019)
+
+Anti-Money Laundering in Bitcoin: Experimenting with Graph Convolutional Networks for Financial Forensics.
+
+The research explores the use of graph convolutional networks to identify illicit Bitcoin transactions.
+
+Original Research Paper:
+https://arxiv.org/abs/1908.02591
+
+Dataset Publication:
+https://www.elliptic.co/insights/elliptic-dataset-cryptocurrency-financial-crime/
+
+⸻
+
+8. Project Repository
 
 GitHub Repository:
+
 https://github.com/Sindhuganji/Anti-Money-Laundering-
 
 ⸻
 
-Project: Intelligent Anti-Money Laundering Detection Using Explainable AI
+Project Title: Intelligent Anti-Money Laundering Detection Using Explainable AI
+
+Technologies: Python, Machine Learning, Anomaly Detection, Graph Analytics, Explainable AI, Streamlit.
